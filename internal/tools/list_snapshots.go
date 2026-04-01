@@ -18,7 +18,7 @@ func NewListSnapshots(c *client.Client) (mcp.Tool, server.ToolHandlerFunc) {
 	)
 
 	handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		resp, err := c.ListSnapshots()
+		resp, err := c.ListSnapshots(ctx)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

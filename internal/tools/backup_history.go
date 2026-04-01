@@ -28,7 +28,7 @@ func NewBackupHistory(c *client.Client) (mcp.Tool, server.ToolHandlerFunc) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		resp, err := c.GetSnapshotHistory(snapshotID)
+		resp, err := c.GetSnapshotHistory(ctx, snapshotID)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

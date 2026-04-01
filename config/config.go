@@ -2,13 +2,17 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 func init() {
-	// Load .env in the working directory; ignore error if the file is absent.
-	_ = godotenv.Load()
+	// Skip .env loading in stdio mode to avoid picking up unrelated project
+	// .env files when running via npx or as a global binary.
+	if strings.ToLower(os.Getenv("TRANSPORT")) != "stdio" {
+		_ = godotenv.Load()
+	}
 }
 
 type DuplicacyConfig struct {

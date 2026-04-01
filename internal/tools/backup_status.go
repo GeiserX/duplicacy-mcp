@@ -28,7 +28,7 @@ func NewBackupStatus(c *client.Client) (mcp.Tool, server.ToolHandlerFunc) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		resp, err := c.GetSnapshotStatus(snapshotID)
+		resp, err := c.GetSnapshotStatus(ctx, snapshotID)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

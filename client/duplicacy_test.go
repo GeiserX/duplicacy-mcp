@@ -47,6 +47,14 @@ func TestParseLabels(t *testing.T) {
 			},
 		},
 		{
+			name:  "value with closing brace inside quotes",
+			input: `path="/a}b",id="test"`,
+			expect: map[string]string{
+				"path": "/a}b",
+				"id":   "test",
+			},
+		},
+		{
 			name:  "empty value",
 			input: `snapshot_id=""`,
 			expect: map[string]string{
@@ -130,6 +138,14 @@ func TestParseMetricLine(t *testing.T) {
 			name:   "malformed - unclosed brace",
 			line:   `metric{label="val" 1`,
 			wantOK: false,
+		},
+		{
+			name:       "brace inside quoted label value",
+			line:       `metric{path="/a}b",id="x"} 99`,
+			wantName:   "metric",
+			wantValue:  99,
+			wantLabels: map[string]string{"path": "/a}b", "id": "x"},
+			wantOK:     true,
 		},
 	}
 

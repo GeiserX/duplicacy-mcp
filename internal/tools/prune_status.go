@@ -23,7 +23,7 @@ func NewPruneStatus(c *client.Client) (mcp.Tool, server.ToolHandlerFunc) {
 	handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		storageTarget, _ := req.GetArguments()["storage_target"].(string)
 
-		resp, err := c.GetPruneStatus(storageTarget)
+		resp, err := c.GetPruneStatus(ctx, storageTarget)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

@@ -18,7 +18,7 @@ func RegisterStatus(s *server.MCPServer, c *client.Client) {
 	)
 
 	s.AddResource(res, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-		body, err := c.GetStatus()
+		body, err := c.GetStatus(ctx)
 		if err != nil {
 			return nil, err
 		}

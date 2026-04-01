@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,8 +70,12 @@ func New(base string) *Client {
 }
 
 // FetchMetrics retrieves and parses the /metrics endpoint into structured data.
-func (c *Client) FetchMetrics() (map[string][]MetricSample, error) {
-	resp, err := c.hc.Get(c.base + "/metrics")
+func (c *Client) FetchMetrics(ctx context.Context) (map[string][]MetricSample, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/metrics", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build metrics request: %w", err)
+	}
+	resp, err := c.hc.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch metrics: %w", err)
 	}
@@ -90,10 +95,14 @@ func (c *Client) FetchMetrics() (map[string][]MetricSample, error) {
 }
 
 // CheckHealth hits the exporter's health endpoint and returns the result.
-func (c *Client) CheckHealth() ([]byte, error) {
+func (c *Client) CheckHealth(ctx context.Context) ([]byte, error) {
 	// Try /healthz first, fall back to /health
 	for _, path := range []string{"/healthz", "/health"} {
-		resp, err := c.hc.Get(c.base + path)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := c.hc.Do(req)
 		if err != nil {
 			continue
 		}
@@ -111,7 +120,15 @@ func (c *Client) CheckHealth() ([]byte, error) {
 	}
 
 	// If neither health endpoint works, try /metrics as a liveness check
-	resp, err := c.hc.Get(c.base + "/metrics")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/metrics", nil)
+	if err != nil {
+		result := map[string]any{
+			"status": "error",
+			"error":  err.Error(),
+		}
+		return json.Marshal(result)
+	}
+	resp, err := c.hc.Do(req)
 	if err != nil {
 		result := map[string]any{
 			"status": "error",
@@ -134,8 +151,8 @@ func (c *Client) CheckHealth() ([]byte, error) {
 }
 
 // GetStatus parses metrics into a structured JSON of all backup statuses.
-func (c *Client) GetStatus() ([]byte, error) {
-	metrics, err := c.FetchMetrics()
+func (c *Client) GetStatus(ctx context.Context) ([]byte, error) {
+	metrics, err := c.FetchMetrics(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -207,8 +224,8 @@ func (c *Client) GetStatus() ([]byte, error) {
 }
 
 // GetProgress parses metrics for real-time progress of any running backups.
-func (c *Client) GetProgress() ([]byte, error) {
-	metrics, err := c.FetchMetrics()
+func (c *Client) GetProgress(ctx context.Context) ([]byte, error) {
+	metrics, err := c.FetchMetrics(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -269,8 +286,8 @@ func (c *Client) GetProgress() ([]byte, error) {
 }
 
 // GetSnapshotStatus returns status for a specific snapshot_id.
-func (c *Client) GetSnapshotStatus(snapshotID string) ([]byte, error) {
-	metrics, err := c.FetchMetrics()
+func (c *Client) GetSnapshotStatus(ctx context.Context, snapshotID string) ([]byte, error) {
+	metrics, err := c.FetchMetrics(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -349,8 +366,8 @@ func (c *Client) GetSnapshotStatus(snapshotID string) ([]byte, error) {
 }
 
 // GetSnapshotHistory returns last backup details for a specific snapshot_id.
-func (c *Client) GetSnapshotHistory(snapshotID string) ([]byte, error) {
-	metrics, err := c.FetchMetrics()
+func (c *Client) GetSnapshotHistory(ctx context.Context, snapshotID string) ([]byte, error) {
+	metrics, err := c.FetchMetrics(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -444,8 +461,8 @@ func (c *Client) GetSnapshotHistory(snapshotID string) ([]byte, error) {
 }
 
 // ListSnapshots extracts all unique snapshot_id values from metrics.
-func (c *Client) ListSnapshots() ([]byte, error) {
-	metrics, err := c.FetchMetrics()
+func (c *Client) ListSnapshots(ctx context.Context) ([]byte, error) {
+	metrics, err := c.FetchMetrics(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -471,8 +488,8 @@ func (c *Client) ListSnapshots() ([]byte, error) {
 }
 
 // GetPruneStatus returns prune status, optionally filtered by storage_target.
-func (c *Client) GetPruneStatus(storageTarget string) ([]byte, error) {
-	metrics, err := c.FetchMetrics()
+func (c *Client) GetPruneStatus(ctx context.Context, storageTarget string) ([]byte, error) {
+	metrics, err := c.FetchMetrics(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +574,7 @@ func parseMetricLine(line string) (string, MetricSample, bool) {
 
 	if idx := strings.IndexByte(line, '{'); idx >= 0 {
 		name = line[:idx]
-		endIdx := strings.IndexByte(line[idx:], '}')
+		endIdx := findClosingBrace(line[idx:])
 		if endIdx < 0 {
 			return "", MetricSample{}, false
 		}
@@ -587,6 +604,26 @@ func parseMetricLine(line string) (string, MetricSample, bool) {
 	}
 
 	return name, MetricSample{Labels: labels, Value: val}, true
+}
+
+// findClosingBrace finds the index of the closing } that ends a label set,
+// skipping } characters inside quoted label values.
+func findClosingBrace(s string) int {
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && inQuote && i+1 < len(s) {
+			i++ // skip escaped character
+			continue
+		}
+		if s[i] == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if s[i] == '}' && !inQuote {
+			return i
+		}
+	}
+	return -1
 }
 
 // parseLabels parses the label portion: label1="val1",label2="val2"
