@@ -31,10 +31,12 @@ services:
   duplicacy-mcp:
     image: drumsergio/duplicacy-mcp:latest
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       - DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750
 ```
+
+> **Security note:** The HTTP transport listens on `127.0.0.1:8080` by default. If you need to expose it on a network, place it behind a reverse proxy with authentication.
 
 ## Install via npm (stdio transport)
 
@@ -49,7 +51,7 @@ npm install -g duplicacy-mcp
 duplicacy-mcp
 ```
 
-This downloads the pre-built Go binary for your platform and runs it with stdio transport, compatible with any MCP client.
+This downloads the pre-built Go binary from GitHub Releases for your platform and runs it with stdio transport. Requires at least one [published release](https://github.com/GeiserX/duplicacy-mcp/releases).
 
 ## Local build
 
@@ -68,6 +70,7 @@ go run ./cmd/server
 | Variable                 | Default                    | Description                                          |
 |--------------------------|----------------------------|------------------------------------------------------|
 | `DUPLICACY_EXPORTER_URL` | `http://localhost:9750`    | Duplicacy Prometheus exporter URL (without trailing /)|
+| `LISTEN_ADDR`            | `127.0.0.1:8080`           | HTTP listen address (Docker sets `0.0.0.0:8080`)     |
 | `TRANSPORT`              | _(empty = HTTP)_           | Set to `stdio` for stdio transport                   |
 
 Put them in a `.env` file (from `.env.example`) or set them in the environment.
@@ -92,7 +95,6 @@ Tested with [Inspector](https://modelcontextprotocol.io/docs/tools/inspector) an
     "init_method": "initialize",
     "session_header": "Mcp-Session-Id"
   },
-  "logo_url": "https://raw.githubusercontent.com/GeiserX/duplicacy-mcp/main/docs/images/logo.png",
   "contact_email": "acsdesk@protonmail.com",
   "legal_info_url": "https://github.com/GeiserX/duplicacy-mcp/blob/main/LICENSE"
 }

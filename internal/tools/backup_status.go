@@ -3,6 +3,7 @@ package tools // same package for every tool file
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/geiserx/duplicacy-mcp/client"
@@ -30,6 +31,13 @@ func NewBackupStatus(c *client.Client) (mcp.Tool, server.ToolHandlerFunc) {
 		resp, err := c.GetSnapshotStatus(snapshotID)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		var check map[string]any
+		if json.Unmarshal(resp, &check) == nil {
+			if _, hasErr := check["error"]; hasErr {
+				return mcp.NewToolResultError(string(resp)), nil
+			}
 		}
 
 		return mcp.NewToolResultText(
