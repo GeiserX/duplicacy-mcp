@@ -1,0 +1,33 @@
+{
+  "name": "duplicacy-mcp",
+  "version": "0.0.1",
+  "description": "MCP server for Duplicacy — monitor backup status and Prometheus metrics via the Model Context Protocol",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GeiserX/duplicacy-mcp.git"
+  },
+  "homepage": "https://github.com/GeiserX/duplicacy-mcp",
+  "author": "GeiserX",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "duplicacy",
+    "backup",
+    "prometheus",
+    "monitoring"
+  ],
+  "bin": {
+    "duplicacy-mcp": "run.js"
+  },
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "files": [
+    "run.js",
+    "postinstall.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
