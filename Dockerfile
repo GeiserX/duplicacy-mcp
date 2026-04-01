@@ -8,6 +8,5 @@ RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /out/duplicacy-mcp ./cmd/server
 FROM alpine:3.23
 COPY --from=builder /out/duplicacy-mcp /usr/local/bin/duplicacy-mcp
 EXPOSE 8080
-ENV TRANSPORT=stdio
 ENV DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750
 ENTRYPOINT ["/usr/local/bin/duplicacy-mcp"]

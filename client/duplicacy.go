@@ -121,11 +121,14 @@ func (c *Client) CheckHealth() ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
+	status := "ok"
+	if resp.StatusCode >= 400 {
+		status = "degraded"
+	}
 	result := map[string]any{
-		"status":   "ok",
+		"status":   status,
 		"endpoint": "/metrics",
 		"code":     resp.StatusCode,
-		"body":     "(metrics endpoint reachable)",
 	}
 	return json.Marshal(result)
 }
