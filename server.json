@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.GeiserX/duplicacy-mcp",
+  "description": "MCP server for Duplicacy — monitor backup status and Prometheus metrics",
+  "repository": {
+    "url": "https://github.com/GeiserX/duplicacy-mcp",
+    "source": "github"
+  },
+  "version": "0.0.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "duplicacy-mcp",
+      "version": "0.0.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DUPLICACY_EXPORTER_URL",
+          "description": "Duplicacy Prometheus exporter URL (e.g. http://localhost:9750)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "drumsergio/duplicacy-mcp:v0.0.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DUPLICACY_EXPORTER_URL",
+          "description": "Duplicacy Prometheus exporter URL (e.g. http://localhost:9750)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

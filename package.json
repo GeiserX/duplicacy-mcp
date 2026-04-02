@@ -1,5 +1,6 @@
 {
   "name": "duplicacy-mcp",
+  "mcpName": "io.github.GeiserX/duplicacy-mcp",
   "version": "0.0.1",
   "description": "MCP server for Duplicacy — monitor backup status and Prometheus metrics via the Model Context Protocol",
   "license": "GPL-3.0",
