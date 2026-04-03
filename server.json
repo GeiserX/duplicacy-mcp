@@ -6,12 +6,12 @@
     "url": "https://github.com/GeiserX/duplicacy-mcp",
     "source": "github"
   },
-  "version": "0.0.1",
+  "version": "0.0.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "duplicacy-mcp",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "transport": {
         "type": "stdio"
       },
@@ -27,7 +27,7 @@
     },
     {
       "registryType": "oci",
-      "identifier": "drumsergio/duplicacy-mcp:v0.0.1",
+      "identifier": "drumsergio/duplicacy-mcp:v0.0.2",
       "transport": {
         "type": "stdio"
       },
