@@ -29,8 +29,8 @@
       "registryType": "oci",
       "identifier": "drumsergio/duplicacy-mcp:v0.1.0",
       "transport": {
-        "type": "sse",
-        "url": "http://localhost:8080/sse"
+        "type": "streamable-http",
+        "url": "http://localhost:8080/mcp"
       },
       "environmentVariables": [
         {
