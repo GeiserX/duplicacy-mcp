@@ -139,3 +139,12 @@ Duplicacy-MCP follows the [Contributor Covenant](http://contributor-covenant.org
 - [lynxprompt-mcp](https://github.com/GeiserX/lynxprompt-mcp) — AI configuration blueprints
 - [pumperly-mcp](https://github.com/GeiserX/pumperly-mcp) — Fuel and EV charging prices
 - [telegram-archive-mcp](https://github.com/GeiserX/telegram-archive-mcp) — Telegram message archive
+
+## Related Projects
+
+| Project | Description |
+|---------|-------------|
+| [duplicacy-cli-cron](https://github.com/GeiserX/duplicacy-cli-cron) | Docker-based encrypted dual-storage backup automation using Duplicacy CLI |
+| [duplicacy-exporter](https://github.com/GeiserX/duplicacy-exporter) | Real-time Prometheus exporter for Duplicacy backups |
+| [duplicacy-ha](https://github.com/GeiserX/duplicacy-ha) | Home Assistant custom integration for monitoring Duplicacy backups |
+| [duplicacy-container](https://github.com/GeiserX/duplicacy-container) | Container image and Helm chart for running Duplicacy on Kubernetes |
