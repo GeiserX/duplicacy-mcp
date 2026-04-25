@@ -106,9 +106,9 @@ func (c *Client) CheckHealth(ctx context.Context) ([]byte, error) {
 		if err != nil {
 			continue
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode < 400 {
 			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
 			result := map[string]any{
 				"status":   "ok",
 				"endpoint": path,
@@ -117,6 +117,7 @@ func (c *Client) CheckHealth(ctx context.Context) ([]byte, error) {
 			}
 			return json.Marshal(result)
 		}
+		resp.Body.Close()
 	}
 
 	// If neither health endpoint works, try /metrics as a liveness check
