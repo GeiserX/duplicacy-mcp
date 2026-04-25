@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://codecov.io/gh/GeiserX/duplicacy-mcp"><img src="https://codecov.io/gh/GeiserX/duplicacy-mcp/graph/badge.svg" alt="codecov"/></a>
   <a href="https://www.npmjs.com/package/duplicacy-mcp"><img src="https://img.shields.io/npm/v/duplicacy-mcp?style=flat-square&logo=npm" alt="npm"/></a>
-  <img src="https://img.shields.io/badge/Go-1.24-blue?style=flat-square&logo=go&logoColor=white" alt="Go"/>
+  <img src="https://img.shields.io/badge/Go-1.25-blue?style=flat-square&logo=go&logoColor=white" alt="Go"/>
   <a href="https://hub.docker.com/r/drumsergio/duplicacy-mcp"><img src="https://img.shields.io/docker/pulls/drumsergio/duplicacy-mcp?style=flat-square&logo=docker" alt="Docker Pulls"/></a>
   <a href="https://github.com/GeiserX/duplicacy-mcp/stargazers"><img src="https://img.shields.io/github/stars/GeiserX/duplicacy-mcp?style=flat-square&logo=github" alt="GitHub Stars"/></a>
   <a href="https://github.com/GeiserX/duplicacy-mcp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GeiserX/duplicacy-mcp?style=flat-square" alt="License"/></a>
@@ -42,7 +42,7 @@ LLMs / Agents can: `initialize` -> `readResource` -> `listTools` -> `callTool` .
 ```yaml
 services:
   duplicacy-mcp:
-    image: drumsergio/duplicacy-mcp:latest
+    image: drumsergio/duplicacy-mcp:0.1.0
     ports:
       - "127.0.0.1:8080:8080"
     environment:
@@ -117,7 +117,7 @@ Tested with [Inspector](https://modelcontextprotocol.io/docs/tools/inspector) an
 
 [Duplicacy](https://duplicacy.com/) -- lock-free deduplication cloud backup
 
-[duplicacy-exporter](https://github.com/jmgilman/duplicacy-exporter) -- Prometheus exporter for Duplicacy
+[duplicacy-exporter](https://github.com/GeiserX/duplicacy-exporter) -- Prometheus exporter for Duplicacy
 
 [MCP-GO](https://github.com/mark3labs/mcp-go) -- modern MCP implementation
 

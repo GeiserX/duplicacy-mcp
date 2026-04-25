@@ -26,6 +26,7 @@ func main() {
 		"Duplicacy MCP Bridge",
 		version.Version,
 		server.WithToolCapabilities(true),
+		server.WithResourceCapabilities(true, true),
 		server.WithRecovery(),
 	)
 

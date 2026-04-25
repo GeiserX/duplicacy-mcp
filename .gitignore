@@ -27,4 +27,4 @@ go.work.sum
 dist/
 bin/
 node_modules/
-server
+/server
