@@ -1,4 +1,4 @@
-# AGENTS.md — Duplicacy MCP
+# CLAUDE.md — Duplicacy MCP
 
 ## Project Overview
 
