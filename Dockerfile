@@ -1,12 +1,14 @@
-FROM golang:1.27rc3 AS builder
+# Stable Go, not a release candidate. This builder compiles the binaries that
+# ship to Docker Hub, because .goreleaser.yaml passes the source in through
+# extra_files and builds both published images from this file. 1.27rc3 was
+# pushed 2026-08-16 and 1.27.0 on 2026-08-30, so the RC pin was two weeks
+# behind final. CI builds linux/arm64 on pull requests, so a bad bump here
+# goes red before merge rather than during a release.
+FROM golang:1.27 AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# TEMPORARY positive control - removed in the next commit.
-# A genuine linux/arm64 build reports GOARCH=arm64, so this must fail. If the
-# job goes green here, it is not really building arm64 and the gate is inert.
-RUN echo "GOARCH=$(go env GOARCH)" && test "$(go env GOARCH)" = "amd64"
 RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /out/duplicacy-mcp ./cmd/server
 
 FROM alpine:3.24
