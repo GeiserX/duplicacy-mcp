@@ -26,7 +26,7 @@
 ## Quick start
 
 ```bash
-docker run -d -p 127.0.0.1:8080:8080 -e DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750 drumsergio/duplicacy-mcp:0.1.0
+docker run -d -p 127.0.0.1:8080:8080 -e DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750 drumsergio/duplicacy-mcp:v0.1.0
 ```
 
 Or run it over stdio with `npx duplicacy-mcp`.
