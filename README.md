@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/GeiserX/duplicacy-mcp/main/docs/images/banner.svg" alt="Duplicacy MCP banner" width="900"/>
+  <img src="https://raw.githubusercontent.com/GeiserX/duplicacy-mcp/main/docs/images/banner.svg" alt="Duplicacy MCP" width="900"/>
 </p>
 
-<h1 align="center">Duplicacy-MCP</h1>
+<h1 align="center">Duplicacy MCP</h1>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/duplicacy-mcp"><img src="https://img.shields.io/npm/v/duplicacy-mcp?style=flat-square&logo=npm" alt="npm"/></a>
   <a href="https://github.com/GeiserX/duplicacy-mcp/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/GeiserX/duplicacy-mcp/ci.yml?style=flat-square&label=CI" alt="CI"/></a>
+  <a href="https://github.com/GeiserX/duplicacy-mcp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GeiserX/duplicacy-mcp?style=flat-square" alt="License"/></a>
   <a href="https://hub.docker.com/r/drumsergio/duplicacy-mcp"><img src="https://img.shields.io/docker/pulls/drumsergio/duplicacy-mcp?style=flat-square&logo=docker" alt="Docker Pulls"/></a>
   <a href="https://github.com/GeiserX/duplicacy-mcp/stargazers"><img src="https://img.shields.io/github/stars/GeiserX/duplicacy-mcp?style=flat-square&logo=github" alt="GitHub Stars"/></a>
-  <a href="https://github.com/GeiserX/duplicacy-mcp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/GeiserX/duplicacy-mcp?style=flat-square" alt="License"/></a>
 </p>
 
 <p align="center"><strong>A tiny bridge that reads Duplicacy backup metrics from a Prometheus exporter and exposes them as an MCP server, enabling LLMs to monitor backup status, progress, and health.</strong></p>
@@ -29,34 +29,34 @@
 docker run -d -p 127.0.0.1:8080:8080 -e DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750 drumsergio/duplicacy-mcp:v0.1.0
 ```
 
-Or run it over stdio with `npx duplicacy-mcp`.
+That serves `http://127.0.0.1:8080/mcp`. For a client that starts the server itself over stdio, use the npm package in an `mcpServers` block:
+
+```json
+{
+  "mcpServers": {
+    "duplicacy": {
+      "command": "npx",
+      "args": ["-y", "duplicacy-mcp"],
+      "env": { "DUPLICACY_EXPORTER_URL": "http://localhost:9750" }
+    }
+  }
+}
+```
+
+Compose, a global npm install and a local build are in [Getting started](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/getting-started.md).
 
 ## Documentation
 
-- [Installation](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/installation.md): Docker Compose, npm, local build
-- [Configuration](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/configuration.md): environment variables
-- [Usage](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/usage.md): resources and tools, example client configuration
+- [Getting started](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/getting-started.md): Docker Compose, npm, local build, first run
+- [Configuration](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/configuration.md): environment variables, client config for stdio and HTTP
+- [Usage](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/usage.md): resources and tools
 - [Development](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/development.md): testing with Inspector, credits, contributing
-
-Listed on the [Official MCP Registry](https://registry.modelcontextprotocol.io), [Glama](https://glama.ai/mcp/servers/GeiserX/duplicacy-mcp), [MCPServers.org](https://mcpservers.org/servers/geiserx/duplicacy-mcp), [mcp.so](https://mcp.so/server/duplicacy-mcp), [ToolSDK Registry](https://github.com/toolsdk-ai/toolsdk-mcp-registry) and [awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers#readme).
+- [Related projects](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/related.md): the Duplicacy family, other MCP servers, registry listings
 
 ## Related projects
 
-| Project | Description |
-|---------|-------------|
-| [duplicacy-cli-cron](https://github.com/GeiserX/duplicacy-cli-cron) | Docker-based encrypted dual-storage backup automation using Duplicacy CLI |
-| [duplicacy-exporter](https://github.com/GeiserX/duplicacy-exporter) | Real-time Prometheus exporter for Duplicacy backups |
-| [duplicacy-ha](https://github.com/GeiserX/duplicacy-ha) | Home Assistant custom integration for monitoring Duplicacy backups |
-| [duplicacy-container](https://github.com/GeiserX/duplicacy-container) | Container image and Helm chart for running Duplicacy on Kubernetes |
-
-Other MCP servers by GeiserX:
-
-- [cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) — Passive income monitoring
-- [genieacs-mcp](https://github.com/GeiserX/genieacs-mcp) — TR-069 device management
-- [lynxprompt-mcp](https://github.com/GeiserX/lynxprompt-mcp) — AI configuration blueprints
-- [pumperly-mcp](https://github.com/GeiserX/pumperly-mcp) — Fuel and EV charging prices
-- [telegram-archive-mcp](https://github.com/GeiserX/telegram-archive-mcp) — Telegram message archive
+Part of the Duplicacy family: [duplicacy-exporter](https://github.com/GeiserX/duplicacy-exporter), [duplicacy-cli-cron](https://github.com/GeiserX/duplicacy-cli-cron), [duplicacy-ha](https://github.com/GeiserX/duplicacy-ha), [duplicacy-container](https://github.com/GeiserX/duplicacy-container).
 
 ## License
 
-GPL-3.0, see [LICENSE](https://github.com/GeiserX/duplicacy-mcp/blob/main/LICENSE).
+[GPL-3.0-or-later](https://github.com/GeiserX/duplicacy-mcp/blob/main/LICENSE)
