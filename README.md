@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/banner.svg" alt="Duplicacy MCP banner" width="900"/>
+  <img src="https://raw.githubusercontent.com/GeiserX/duplicacy-mcp/main/docs/images/banner.svg" alt="Duplicacy MCP banner" width="900"/>
 </p>
 
 <h1 align="center">Duplicacy-MCP</h1>
