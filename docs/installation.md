@@ -5,7 +5,7 @@
 ```yaml
 services:
   duplicacy-mcp:
-    image: drumsergio/duplicacy-mcp:0.1.0
+    image: drumsergio/duplicacy-mcp:v0.1.0
     ports:
       - "127.0.0.1:8080:8080"
     environment:
