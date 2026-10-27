@@ -26,7 +26,8 @@
   },
   "files": [
     "run.js",
-    "postinstall.js"
+    "postinstall.js",
+    "checksums.txt"
   ],
   "engines": {
     "node": ">=18"
