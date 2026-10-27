@@ -1,5 +1,7 @@
 version: 2
 updates:
+  # Majors are not ignored: an SDK major such as mcp-go v1 (MCP 2026-07-28)
+  # must arrive as its own pull request instead of never.
   - package-ecosystem: gomod
     directory: /
     schedule:
@@ -9,18 +11,16 @@ updates:
         update-types:
           - minor
           - patch
-    ignore:
-      - dependency-name: '*'
-        update-types:
-          - version-update:semver-major
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+  # Keeps the digest-pinned base images in the Dockerfile current.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+  # Keeps the SHA-pinned actions current; the version comment is updated too.
   - package-ecosystem: github-actions
     directory: /
     schedule:
