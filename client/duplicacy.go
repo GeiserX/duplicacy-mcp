@@ -2,57 +2,35 @@ package client
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
+	"math"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
+)
+
+const (
+	// maxMetricsBytes bounds the /metrics body. A real exporter serves a few
+	// kilobytes; anything near this size is a misconfigured URL.
+	maxMetricsBytes = 16 << 20
+	// maxHealthBodyBytes bounds how much of a health body is read and echoed.
+	maxHealthBodyBytes = 512
+	// maxLabelRunes bounds a label value copied into tool output.
+	maxLabelRunes = 128
 )
 
 // MetricSample represents a single Prometheus metric line with its labels and value.
 type MetricSample struct {
-	Labels map[string]string `json:"labels"`
-	Value  float64           `json:"value"`
-}
-
-// BackupStatus holds the structured status for a single snapshot.
-type BackupStatus struct {
-	SnapshotID    string  `json:"snapshot_id"`
-	StorageTarget string  `json:"storage_target"`
-	Machine       string  `json:"machine"`
-	Running       bool    `json:"running"`
-	ExitCode      float64 `json:"exit_code"`
-	LastSuccess   string  `json:"last_success,omitempty"`
-	LastDuration  float64 `json:"last_duration_seconds,omitempty"`
-	LastFiles     float64 `json:"last_files_total,omitempty"`
-	LastFilesNew  float64 `json:"last_files_new,omitempty"`
-	LastBytesUp   float64 `json:"last_bytes_uploaded,omitempty"`
-	LastBytesNew  float64 `json:"last_bytes_new,omitempty"`
-	LastChunksNew float64 `json:"last_chunks_new,omitempty"`
-	LastRevision  float64 `json:"last_revision,omitempty"`
-	TotalBytesUp  float64 `json:"total_bytes_uploaded,omitempty"`
-}
-
-// BackupProgress holds real-time progress for a running backup.
-type BackupProgress struct {
-	SnapshotID     string  `json:"snapshot_id"`
-	StorageTarget  string  `json:"storage_target"`
-	Machine        string  `json:"machine"`
-	Running        bool    `json:"running"`
-	SpeedBPS       float64 `json:"speed_bytes_per_second"`
-	ProgressRatio  float64 `json:"progress_ratio"`
-	ChunksUploaded float64 `json:"chunks_uploaded"`
-	ChunksSkipped  float64 `json:"chunks_skipped"`
-}
-
-// PruneStatus holds the structured status for pruning operations.
-type PruneStatus struct {
-	StorageTarget string `json:"storage_target"`
-	Machine       string `json:"machine"`
-	Running       bool   `json:"running"`
-	LastSuccess   string `json:"last_success,omitempty"`
+	Labels map[string]string
+	Value  float64
 }
 
 // Client talks to the duplicacy-exporter Prometheus metrics endpoint.
@@ -69,35 +47,103 @@ func New(base string) *Client {
 	}
 }
 
+// ExporterError is a failure to reach or read the exporter. Its message is
+// stable and safe to show to a model: it never carries the exporter URL, DNS
+// details or the exporter's response body. The underlying error is logged to
+// stderr instead.
+type ExporterError struct {
+	// Kind is one of: timeout, refused, dns, http_status, too_large, request.
+	Kind string
+	// Status is the HTTP status code when Kind is http_status.
+	Status int
+	err    error
+}
+
+func (e *ExporterError) Error() string {
+	const hint = "; check DUPLICACY_EXPORTER_URL and that duplicacy-exporter is running"
+	switch e.Kind {
+	case "timeout":
+		return "exporter unreachable (timeout)" + hint
+	case "refused":
+		return "exporter unreachable (connection refused)" + hint
+	case "dns":
+		return "exporter unreachable (DNS lookup failed)" + hint
+	case "http_status":
+		return fmt.Sprintf("exporter answered HTTP %d%s", e.Status, hint)
+	case "too_large":
+		return fmt.Sprintf("exporter /metrics response is larger than %d MiB%s", maxMetricsBytes>>20, hint)
+	default:
+		return "exporter request failed" + hint
+	}
+}
+
+func (e *ExporterError) Unwrap() error { return e.err }
+
+// classify turns a transport error into an ExporterError and logs the detail.
+func classify(op string, err error) *ExporterError {
+	log.Printf("exporter %s: %v", op, err)
+	var dnsErr *net.DNSError
+	var netErr net.Error
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
+		return &ExporterError{Kind: "timeout", err: err}
+	case errors.As(err, &dnsErr):
+		return &ExporterError{Kind: "dns", err: err}
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return &ExporterError{Kind: "refused", err: err}
+	default:
+		return &ExporterError{Kind: "request", err: err}
+	}
+}
+
 // FetchMetrics retrieves and parses the /metrics endpoint into structured data.
 func (c *Client) FetchMetrics(ctx context.Context) (map[string][]MetricSample, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/metrics", nil)
 	if err != nil {
-		return nil, fmt.Errorf("build metrics request: %w", err)
+		return nil, classify("build request", err)
 	}
+	req.Header.Set("Accept", "text/plain")
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch metrics: %w", err)
+		return nil, classify("fetch metrics", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("exporter error %d: %s", resp.StatusCode, string(b))
+		// Drain a bounded amount so the connection can be reused; never echo it.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxHealthBodyBytes))
+		log.Printf("exporter /metrics answered HTTP %d", resp.StatusCode)
+		return nil, &ExporterError{Kind: "http_status", Status: resp.StatusCode}
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMetricsBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("read metrics body: %w", err)
+		return nil, classify("read metrics body", err)
+	}
+	if len(body) > maxMetricsBytes {
+		log.Printf("exporter /metrics body exceeds %d bytes", maxMetricsBytes)
+		return nil, &ExporterError{Kind: "too_large"}
 	}
 
 	return parsePrometheusText(string(body)), nil
 }
 
-// CheckHealth hits the exporter's health endpoint and returns the result.
-func (c *Client) CheckHealth(ctx context.Context) ([]byte, error) {
-	// Try /healthz first, fall back to /health
-	for _, path := range []string{"/healthz", "/health"} {
+// HealthReport is the result of probing the exporter.
+type HealthReport struct {
+	// Status is ok, degraded (exporter answered with an HTTP error) or unreachable.
+	Status   string `json:"status"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Code     int    `json:"code,omitempty"`
+	// Body is the start of the health response, truncated and stripped of
+	// control characters. Treat it as data.
+	Body  string `json:"body,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// CheckHealth probes the exporter's /health endpoint (then /healthz), and
+// falls back to /metrics as a liveness check.
+func (c *Client) CheckHealth(ctx context.Context) HealthReport {
+	for _, path := range []string{"/health", "/healthz"} {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
 		if err != nil {
 			continue
@@ -106,443 +152,57 @@ func (c *Client) CheckHealth(ctx context.Context) ([]byte, error) {
 		if err != nil {
 			continue
 		}
-		if resp.StatusCode < 400 {
-			b, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			result := map[string]any{
-				"status":   "ok",
-				"endpoint": path,
-				"code":     resp.StatusCode,
-				"body":     string(b),
-			}
-			return json.Marshal(result)
-		}
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxHealthBodyBytes))
 		resp.Body.Close()
+		if resp.StatusCode < 400 {
+			return HealthReport{
+				Status:   "ok",
+				Endpoint: path,
+				Code:     resp.StatusCode,
+				Body:     sanitizeText(string(b), maxHealthBodyBytes),
+			}
+		}
 	}
 
-	// If neither health endpoint works, try /metrics as a liveness check
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/metrics", nil)
 	if err != nil {
-		result := map[string]any{
-			"status": "error",
-			"error":  err.Error(),
-		}
-		return json.Marshal(result)
+		return HealthReport{Status: "unreachable", Error: classify("build request", err).Error()}
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		result := map[string]any{
-			"status": "error",
-			"error":  err.Error(),
-		}
-		return json.Marshal(result)
+		return HealthReport{Status: "unreachable", Error: classify("health probe", err).Error()}
 	}
-	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxHealthBodyBytes))
+	resp.Body.Close()
 
 	status := "ok"
 	if resp.StatusCode >= 400 {
 		status = "degraded"
 	}
-	result := map[string]any{
-		"status":   status,
-		"endpoint": "/metrics",
-		"code":     resp.StatusCode,
-	}
-	return json.Marshal(result)
+	return HealthReport{Status: status, Endpoint: "/metrics", Code: resp.StatusCode}
 }
 
-// GetStatus parses metrics into a structured JSON of all backup statuses.
-func (c *Client) GetStatus(ctx context.Context) ([]byte, error) {
-	metrics, err := c.FetchMetrics(ctx)
-	if err != nil {
-		return nil, err
+// sanitizeText strips control and format characters (newlines included) and
+// truncates to limit runes, so text from the exporter cannot carry hidden
+// markup or forged line structure into a model's context.
+func sanitizeText(s string, limit int) string {
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "�")
 	}
-
-	// Build status map keyed by snapshot_id+storage_target+machine
-	type statusKey struct {
-		SnapshotID    string
-		StorageTarget string
-		Machine       string
-	}
-	statusMap := make(map[statusKey]*BackupStatus)
-
-	getOrCreate := func(s MetricSample) *BackupStatus {
-		k := statusKey{
-			SnapshotID:    s.Labels["snapshot_id"],
-			StorageTarget: s.Labels["storage_target"],
-			Machine:       s.Labels["machine"],
-		}
-		if st, ok := statusMap[k]; ok {
-			return st
-		}
-		st := &BackupStatus{
-			SnapshotID:    k.SnapshotID,
-			StorageTarget: k.StorageTarget,
-			Machine:       k.Machine,
-		}
-		statusMap[k] = st
-		return st
-	}
-
-	for name, samples := range metrics {
-		for _, s := range samples {
-			st := getOrCreate(s)
-			switch name {
-			case "duplicacy_backup_running":
-				st.Running = s.Value == 1
-			case "duplicacy_backup_last_exit_code":
-				st.ExitCode = s.Value
-			case "duplicacy_backup_last_success_timestamp_seconds":
-				if s.Value > 0 {
-					st.LastSuccess = time.Unix(int64(s.Value), 0).UTC().Format(time.RFC3339)
-				}
-			case "duplicacy_backup_last_duration_seconds":
-				st.LastDuration = s.Value
-			case "duplicacy_backup_last_files_total":
-				st.LastFiles = s.Value
-			case "duplicacy_backup_last_files_new":
-				st.LastFilesNew = s.Value
-			case "duplicacy_backup_last_bytes_uploaded":
-				st.LastBytesUp = s.Value
-			case "duplicacy_backup_last_bytes_new":
-				st.LastBytesNew = s.Value
-			case "duplicacy_backup_last_chunks_new":
-				st.LastChunksNew = s.Value
-			case "duplicacy_backup_last_revision":
-				st.LastRevision = s.Value
-			case "duplicacy_backup_bytes_uploaded_total":
-				st.TotalBytesUp = s.Value
-			}
-		}
-	}
-
-	statuses := make([]BackupStatus, 0, len(statusMap))
-	for _, st := range statusMap {
-		statuses = append(statuses, *st)
-	}
-
-	return json.Marshal(statuses)
-}
-
-// GetProgress parses metrics for real-time progress of any running backups.
-func (c *Client) GetProgress(ctx context.Context) ([]byte, error) {
-	metrics, err := c.FetchMetrics(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	type progressKey struct {
-		SnapshotID    string
-		StorageTarget string
-		Machine       string
-	}
-	progressMap := make(map[progressKey]*BackupProgress)
-
-	getOrCreate := func(s MetricSample) *BackupProgress {
-		k := progressKey{
-			SnapshotID:    s.Labels["snapshot_id"],
-			StorageTarget: s.Labels["storage_target"],
-			Machine:       s.Labels["machine"],
-		}
-		if p, ok := progressMap[k]; ok {
-			return p
-		}
-		p := &BackupProgress{
-			SnapshotID:    k.SnapshotID,
-			StorageTarget: k.StorageTarget,
-			Machine:       k.Machine,
-		}
-		progressMap[k] = p
-		return p
-	}
-
-	for name, samples := range metrics {
-		for _, s := range samples {
-			switch name {
-			case "duplicacy_backup_running":
-				p := getOrCreate(s)
-				p.Running = s.Value == 1
-			case "duplicacy_backup_speed_bytes_per_second":
-				p := getOrCreate(s)
-				p.SpeedBPS = s.Value
-			case "duplicacy_backup_progress_ratio":
-				p := getOrCreate(s)
-				p.ProgressRatio = s.Value
-			case "duplicacy_backup_chunks_uploaded":
-				p := getOrCreate(s)
-				p.ChunksUploaded = s.Value
-			case "duplicacy_backup_chunks_skipped":
-				p := getOrCreate(s)
-				p.ChunksSkipped = s.Value
-			}
-		}
-	}
-
-	progresses := make([]BackupProgress, 0, len(progressMap))
-	for _, p := range progressMap {
-		progresses = append(progresses, *p)
-	}
-
-	return json.Marshal(progresses)
-}
-
-// GetSnapshotStatus returns status for a specific snapshot_id.
-func (c *Client) GetSnapshotStatus(ctx context.Context, snapshotID string) ([]byte, error) {
-	metrics, err := c.FetchMetrics(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	type statusKey struct {
-		StorageTarget string
-		Machine       string
-	}
-	statusMap := make(map[statusKey]*BackupStatus)
-
-	getOrCreate := func(s MetricSample) *BackupStatus {
-		k := statusKey{
-			StorageTarget: s.Labels["storage_target"],
-			Machine:       s.Labels["machine"],
-		}
-		if st, ok := statusMap[k]; ok {
-			return st
-		}
-		st := &BackupStatus{
-			SnapshotID:    snapshotID,
-			StorageTarget: k.StorageTarget,
-			Machine:       k.Machine,
-		}
-		statusMap[k] = st
-		return st
-	}
-
-	for name, samples := range metrics {
-		for _, s := range samples {
-			if s.Labels["snapshot_id"] != snapshotID {
-				continue
-			}
-			st := getOrCreate(s)
-			switch name {
-			case "duplicacy_backup_running":
-				st.Running = s.Value == 1
-			case "duplicacy_backup_last_exit_code":
-				st.ExitCode = s.Value
-			case "duplicacy_backup_last_success_timestamp_seconds":
-				if s.Value > 0 {
-					st.LastSuccess = time.Unix(int64(s.Value), 0).UTC().Format(time.RFC3339)
-				}
-			case "duplicacy_backup_last_duration_seconds":
-				st.LastDuration = s.Value
-			case "duplicacy_backup_last_files_total":
-				st.LastFiles = s.Value
-			case "duplicacy_backup_last_files_new":
-				st.LastFilesNew = s.Value
-			case "duplicacy_backup_last_bytes_uploaded":
-				st.LastBytesUp = s.Value
-			case "duplicacy_backup_last_bytes_new":
-				st.LastBytesNew = s.Value
-			case "duplicacy_backup_last_chunks_new":
-				st.LastChunksNew = s.Value
-			case "duplicacy_backup_last_revision":
-				st.LastRevision = s.Value
-			case "duplicacy_backup_bytes_uploaded_total":
-				st.TotalBytesUp = s.Value
-			}
-		}
-	}
-
-	if len(statusMap) == 0 {
-		return json.Marshal(map[string]string{
-			"error":       "snapshot not found",
-			"snapshot_id": snapshotID,
-		})
-	}
-
-	statuses := make([]BackupStatus, 0, len(statusMap))
-	for _, st := range statusMap {
-		statuses = append(statuses, *st)
-	}
-
-	return json.Marshal(statuses)
-}
-
-// GetSnapshotHistory returns last backup details for a specific snapshot_id.
-func (c *Client) GetSnapshotHistory(ctx context.Context, snapshotID string) ([]byte, error) {
-	metrics, err := c.FetchMetrics(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	type historyKey struct {
-		StorageTarget string
-		Machine       string
-	}
-
-	type BackupHistory struct {
-		SnapshotID    string  `json:"snapshot_id"`
-		StorageTarget string  `json:"storage_target"`
-		Machine       string  `json:"machine"`
-		LastSuccess   string  `json:"last_success,omitempty"`
-		LastDuration  float64 `json:"last_duration_seconds"`
-		LastFiles     float64 `json:"last_files_total"`
-		LastFilesNew  float64 `json:"last_files_new"`
-		LastBytesUp   float64 `json:"last_bytes_uploaded"`
-		LastBytesNew  float64 `json:"last_bytes_new"`
-		LastChunksNew float64 `json:"last_chunks_new"`
-		ExitCode      float64 `json:"exit_code"`
-		LastRevision  float64 `json:"last_revision"`
-		TotalBytesUp  float64 `json:"total_bytes_uploaded"`
-	}
-
-	historyMap := make(map[historyKey]*BackupHistory)
-
-	getOrCreate := func(s MetricSample) *BackupHistory {
-		k := historyKey{
-			StorageTarget: s.Labels["storage_target"],
-			Machine:       s.Labels["machine"],
-		}
-		if h, ok := historyMap[k]; ok {
-			return h
-		}
-		h := &BackupHistory{
-			SnapshotID:    snapshotID,
-			StorageTarget: k.StorageTarget,
-			Machine:       k.Machine,
-		}
-		historyMap[k] = h
-		return h
-	}
-
-	for name, samples := range metrics {
-		for _, s := range samples {
-			if s.Labels["snapshot_id"] != snapshotID {
-				continue
-			}
-			h := getOrCreate(s)
-			switch name {
-			case "duplicacy_backup_last_success_timestamp_seconds":
-				if s.Value > 0 {
-					h.LastSuccess = time.Unix(int64(s.Value), 0).UTC().Format(time.RFC3339)
-				}
-			case "duplicacy_backup_last_duration_seconds":
-				h.LastDuration = s.Value
-			case "duplicacy_backup_last_files_total":
-				h.LastFiles = s.Value
-			case "duplicacy_backup_last_files_new":
-				h.LastFilesNew = s.Value
-			case "duplicacy_backup_last_bytes_uploaded":
-				h.LastBytesUp = s.Value
-			case "duplicacy_backup_last_bytes_new":
-				h.LastBytesNew = s.Value
-			case "duplicacy_backup_last_chunks_new":
-				h.LastChunksNew = s.Value
-			case "duplicacy_backup_last_exit_code":
-				h.ExitCode = s.Value
-			case "duplicacy_backup_last_revision":
-				h.LastRevision = s.Value
-			case "duplicacy_backup_bytes_uploaded_total":
-				h.TotalBytesUp = s.Value
-			}
-		}
-	}
-
-	if len(historyMap) == 0 {
-		return json.Marshal(map[string]string{
-			"error":       "snapshot not found",
-			"snapshot_id": snapshotID,
-		})
-	}
-
-	histories := make([]BackupHistory, 0, len(historyMap))
-	for _, h := range historyMap {
-		histories = append(histories, *h)
-	}
-
-	return json.Marshal(histories)
-}
-
-// ListSnapshots extracts all unique snapshot_id values from metrics.
-func (c *Client) ListSnapshots(ctx context.Context) ([]byte, error) {
-	metrics, err := c.FetchMetrics(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	seen := make(map[string]bool)
-	for _, samples := range metrics {
-		for _, s := range samples {
-			if id, ok := s.Labels["snapshot_id"]; ok && id != "" {
-				seen[id] = true
-			}
-		}
-	}
-
-	snapshots := make([]string, 0, len(seen))
-	for id := range seen {
-		snapshots = append(snapshots, id)
-	}
-
-	return json.Marshal(map[string]any{
-		"snapshot_ids": snapshots,
-		"count":        len(snapshots),
-	})
-}
-
-// GetPruneStatus returns prune status, optionally filtered by storage_target.
-func (c *Client) GetPruneStatus(ctx context.Context, storageTarget string) ([]byte, error) {
-	metrics, err := c.FetchMetrics(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	type pruneKey struct {
-		StorageTarget string
-		Machine       string
-	}
-	pruneMap := make(map[pruneKey]*PruneStatus)
-
-	getOrCreate := func(s MetricSample) *PruneStatus {
-		k := pruneKey{
-			StorageTarget: s.Labels["storage_target"],
-			Machine:       s.Labels["machine"],
-		}
-		if p, ok := pruneMap[k]; ok {
-			return p
-		}
-		p := &PruneStatus{
-			StorageTarget: k.StorageTarget,
-			Machine:       k.Machine,
-		}
-		pruneMap[k] = p
-		return p
-	}
-
-	for name, samples := range metrics {
-		if name != "duplicacy_prune_running" && name != "duplicacy_prune_last_success_timestamp_seconds" {
+	var b strings.Builder
+	n := 0
+	for _, r := range s {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			continue
 		}
-		for _, s := range samples {
-			if storageTarget != "" && s.Labels["storage_target"] != storageTarget {
-				continue
-			}
-			p := getOrCreate(s)
-			switch name {
-			case "duplicacy_prune_running":
-				p.Running = s.Value == 1
-			case "duplicacy_prune_last_success_timestamp_seconds":
-				if s.Value > 0 {
-					p.LastSuccess = time.Unix(int64(s.Value), 0).UTC().Format(time.RFC3339)
-				}
-			}
+		if n == limit {
+			b.WriteRune('…')
+			break
 		}
+		b.WriteRune(r)
+		n++
 	}
-
-	prunes := make([]PruneStatus, 0, len(pruneMap))
-	for _, p := range pruneMap {
-		prunes = append(prunes, *p)
-	}
-
-	return json.Marshal(prunes)
+	return b.String()
 }
 
 // parsePrometheusText parses Prometheus text exposition format into a map
@@ -600,7 +260,9 @@ func parseMetricLine(line string) (string, MetricSample, bool) {
 	}
 
 	val, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil {
+	if err != nil || math.IsNaN(val) || math.IsInf(val, 0) {
+		// NaN and ±Inf are valid exposition values but cannot be encoded as
+		// JSON, and no Duplicacy gauge means anything by them.
 		return "", MetricSample{}, false
 	}
 
@@ -667,7 +329,7 @@ func parseLabels(s string) map[string]string {
 			i++
 		}
 
-		labels[key] = val.String()
+		labels[key] = sanitizeText(val.String(), maxLabelRunes)
 
 		// Skip comma separator
 		if i < len(s) && s[i] == ',' {

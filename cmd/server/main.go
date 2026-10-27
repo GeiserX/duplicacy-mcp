@@ -2,14 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net/http"
 	"os"
-	"strings"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/geiserx/duplicacy-mcp/client"
 	"github.com/geiserx/duplicacy-mcp/config"
-	"github.com/geiserx/duplicacy-mcp/internal/resources"
-	"github.com/geiserx/duplicacy-mcp/internal/tools"
 	"github.com/geiserx/duplicacy-mcp/version"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -17,74 +19,50 @@ import (
 func main() {
 	log.Printf("Duplicacy MCP %s starting…", version.String())
 
-	// Load config & initialise Duplicacy exporter client
 	cfg := config.LoadDuplicacyConfig()
-	dc := client.New(cfg.ExporterURL)
+	if err := cfg.Validate(); err != nil {
+		log.Fatal(err)
+	}
+	s := newServer(client.New(cfg.ExporterURL))
 
-	// Create MCP server
-	s := server.NewMCPServer(
-		"Duplicacy MCP Bridge",
-		version.Version,
-		server.WithToolCapabilities(true),
-		server.WithResourceCapabilities(true, true),
-		server.WithRecovery(),
-	)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	//----------------------------------------------------
-	// Resource: duplicacy://status
-	//----------------------------------------------------
-	resources.RegisterStatus(s, dc)
-
-	//----------------------------------------------------
-	// Resource: duplicacy://progress
-	//----------------------------------------------------
-	resources.RegisterProgress(s, dc)
-
-	//----------------------------------------------------
-	// Resource: duplicacy://health
-	//----------------------------------------------------
-	resources.RegisterHealth(s, dc)
-
-	// -----------------------------------------------------------------
-	// TOOL: get_backup_status
-	// -----------------------------------------------------------------
-	tool, handler := tools.NewBackupStatus(dc)
-	s.AddTool(tool, handler)
-
-	// -----------------------------------------------------------------
-	// TOOL: get_backup_history
-	// -----------------------------------------------------------------
-	tool, handler = tools.NewBackupHistory(dc)
-	s.AddTool(tool, handler)
-
-	// -----------------------------------------------------------------
-	// TOOL: list_snapshots
-	// -----------------------------------------------------------------
-	tool, handler = tools.NewListSnapshots(dc)
-	s.AddTool(tool, handler)
-
-	// -----------------------------------------------------------------
-	// TOOL: get_prune_status
-	// -----------------------------------------------------------------
-	tool, handler = tools.NewPruneStatus(dc)
-	s.AddTool(tool, handler)
-
-	transport := strings.ToLower(os.Getenv("TRANSPORT"))
-	if transport == "stdio" {
-		stdioSrv := server.NewStdioServer(s)
+	if cfg.Transport == "stdio" {
 		log.Println("Duplicacy MCP bridge running on stdio")
-		if err := stdioSrv.Listen(context.Background(), os.Stdin, os.Stdout); err != nil {
+		if err := server.NewStdioServer(s).Listen(ctx, os.Stdin, os.Stdout); err != nil && !errors.Is(err, context.Canceled) {
 			log.Fatalf("stdio server error: %v", err)
 		}
-	} else {
-		httpSrv := server.NewStreamableHTTPServer(s)
-		addr := os.Getenv("LISTEN_ADDR")
-		if addr == "" {
-			addr = "127.0.0.1:8080"
-		}
-		log.Printf("Duplicacy MCP bridge listening on %s", addr)
-		if err := httpSrv.Start(addr); err != nil {
+		return
+	}
+
+	httpCfg, err := config.LoadHTTPConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	h, err := newHTTPHandler(s, httpCfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	srv := newHTTPServer(httpCfg.ListenAddr, h)
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+	auth := "bearer token required"
+	if httpCfg.AuthToken == "" {
+		auth = "no authentication"
+	}
+	log.Printf("Duplicacy MCP bridge listening on %s%s (%s)", httpCfg.ListenAddr, endpointPath, auth)
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server error: %v", err)
+		}
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("shutdown: %v", err)
 		}
 	}
 }

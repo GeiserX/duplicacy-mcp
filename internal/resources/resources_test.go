@@ -53,8 +53,8 @@ func initAndReadResource(s *server.MCPServer, uri string) mcp.JSONRPCMessage {
 		"method":  "initialize",
 		"params": map[string]any{
 			"protocolVersion": "2025-03-26",
-			"capabilities":   map[string]any{},
-			"clientInfo":     map[string]any{"name": "test", "version": "0.0.0"},
+			"capabilities":    map[string]any{},
+			"clientInfo":      map[string]any{"name": "test", "version": "0.0.0"},
 		},
 	})
 	s.HandleMessage(context.Background(), initMsg)
