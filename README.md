@@ -91,7 +91,7 @@ npm 12, pnpm and Bun skip install scripts, so the wrapper downloads and verifies
 ```bash
 export MCP_AUTH_TOKEN=$(openssl rand -hex 32)
 docker run -d -p 127.0.0.1:8080:8080 -e MCP_AUTH_TOKEN \
-  -e DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750 drumsergio/duplicacy-mcp:v0.1.2
+  -e DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750 drumsergio/duplicacy-mcp:v0.2.0
 claude mcp add --transport http duplicacy http://127.0.0.1:8080/mcp --header "Authorization: Bearer $MCP_AUTH_TOKEN"
 ```
 
