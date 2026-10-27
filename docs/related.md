@@ -11,11 +11,14 @@
 
 ## Other MCP servers by GeiserX
 
+- [biblical-atlas-mcp](https://github.com/GeiserX/biblical-atlas-mcp): people, places and events of the Bible
 - [cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp): passive income monitoring
 - [genieacs-mcp](https://github.com/GeiserX/genieacs-mcp): TR-069 device management
 - [lynxprompt-mcp](https://github.com/GeiserX/lynxprompt-mcp): AI configuration blueprints
 - [pumperly-mcp](https://github.com/GeiserX/pumperly-mcp): fuel and EV charging prices
+- [spinnaker-mcp](https://github.com/GeiserX/spinnaker-mcp): Spinnaker pipelines and deployments
 - [telegram-archive-mcp](https://github.com/GeiserX/telegram-archive-mcp): Telegram message archive
+- [vpn-bypass-mcp](https://github.com/GeiserX/vpn-bypass-mcp): the VPN Bypass macOS app
 
 ## Listings
 

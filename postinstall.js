@@ -1,150 +1,184 @@
 #!/usr/bin/env node
 "use strict";
 
-const { execSync } = require("child_process");
+// Downloads the release binary for this platform, verifies its SHA-256
+// against the checksums.txt shipped inside this npm package (so the hash is
+// covered by npm's provenance, not fetched from the mutable GitHub release),
+// and installs it atomically into bin/.
+//
+// npm runs this as postinstall. npm 12, pnpm and Bun skip install scripts by
+// default, so run.js also calls install() on first start. All logging goes
+// to stderr because, when run.js calls it, stdout carries MCP messages.
+
+const { execFileSync } = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
-const path = require("path");
 const https = require("https");
-const http = require("http");
+const path = require("path");
+const { pipeline, Transform } = require("stream");
 
 const VERSION = require("./package.json").version;
 const REPO = "GeiserX/duplicacy-mcp";
 const BIN_NAME = process.platform === "win32" ? "duplicacy-mcp.exe" : "duplicacy-mcp";
 const BIN_DIR = path.join(__dirname, "bin");
 const BIN_PATH = path.join(BIN_DIR, BIN_NAME);
+const CHECKSUMS_PATH = path.join(__dirname, "checksums.txt");
+
+const MAX_REDIRECTS = 5;
+const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
+
+const log = (msg) => console.error(msg);
 
 function getPlatformArch() {
-  const platform = process.platform;
-  const arch = process.arch;
-
   const platformMap = { darwin: "darwin", linux: "linux", win32: "windows" };
   const archMap = { x64: "amd64", arm64: "arm64" };
-
-  const p = platformMap[platform];
-  const a = archMap[arch];
-
+  const p = platformMap[process.platform];
+  const a = archMap[process.arch];
   if (!p || !a) {
-    throw new Error(`Unsupported platform: ${platform}-${arch}`);
+    throw new Error(`Unsupported platform: ${process.platform}-${process.arch}`);
   }
-
   return { platform: p, arch: a };
 }
 
-function getAssetName() {
+function getAssetName(version = VERSION) {
   const { platform, arch } = getPlatformArch();
   const ext = platform === "windows" ? "zip" : "tar.gz";
-  return `duplicacy-mcp_${VERSION}_${platform}_${arch}.${ext}`;
+  return `duplicacy-mcp_${version}_${platform}_${arch}.${ext}`;
 }
 
-const MAX_REDIRECTS = 10;
-const REQUEST_TIMEOUT_MS = 30_000;
-
-function downloadFile(url, redirectCount = 0) {
-  return new Promise((resolve, reject) => {
-    if (redirectCount > MAX_REDIRECTS) {
-      return reject(new Error(`Too many redirects (>${MAX_REDIRECTS})`));
+// expectedHash returns the SHA-256 that checksums.txt lists for assetName.
+function expectedHash(assetName, checksumsPath = CHECKSUMS_PATH) {
+  if (!fs.existsSync(checksumsPath)) {
+    throw new Error("checksums.txt is missing from this package, so the download cannot be verified");
+  }
+  for (const line of fs.readFileSync(checksumsPath, "utf8").split(/\r?\n/)) {
+    const [hash, name] = line.trim().split(/\s+/);
+    if (name === assetName && /^[a-f0-9]{64}$/.test(hash)) {
+      return hash;
     }
-    const get = url.startsWith("https") ? https.get : http.get;
-    const req = get(url, { timeout: REQUEST_TIMEOUT_MS }, (res) => {
+  }
+  throw new Error(`checksums.txt has no entry for ${assetName}`);
+}
+
+// nextUrl resolves a redirect and refuses anything that is not HTTPS.
+function nextUrl(current, location) {
+  const next = new URL(location, current);
+  if (next.protocol !== "https:") {
+    throw new Error(`refusing a redirect to a non-HTTPS URL (${next.protocol})`);
+  }
+  return next.toString();
+}
+
+// download streams url to dest with a size cap and resolves to its SHA-256.
+function download(url, dest, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    if (!url.startsWith("https://")) {
+      return reject(new Error("refusing to download over a non-HTTPS URL"));
+    }
+    const req = https.get(url, { timeout: REQUEST_TIMEOUT_MS }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return downloadFile(res.headers.location, redirectCount + 1).then(resolve, reject);
+        res.resume();
+        if (redirects >= MAX_REDIRECTS) {
+          return reject(new Error(`Too many redirects (>${MAX_REDIRECTS})`));
+        }
+        let next;
+        try {
+          next = nextUrl(url, res.headers.location);
+        } catch (err) {
+          return reject(err);
+        }
+        return download(next, dest, redirects + 1).then(resolve, reject);
       }
       if (res.statusCode !== 200) {
+        res.resume();
         return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
       }
-      const chunks = [];
-      res.on("data", (chunk) => chunks.push(chunk));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-      res.on("error", reject);
+      if (Number(res.headers["content-length"]) > MAX_DOWNLOAD_BYTES) {
+        res.resume();
+        return reject(new Error("Download is larger than the size cap"));
+      }
+      const hash = crypto.createHash("sha256");
+      let size = 0;
+      const meter = new Transform({
+        transform(chunk, _enc, cb) {
+          size += chunk.length;
+          if (size > MAX_DOWNLOAD_BYTES) {
+            return cb(new Error("Download is larger than the size cap"));
+          }
+          hash.update(chunk);
+          cb(null, chunk);
+        },
+      });
+      pipeline(res, meter, fs.createWriteStream(dest, { mode: 0o600 }), (err) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve(hash.digest("hex"));
+      });
     });
-    req.on("timeout", () => {
-      req.destroy();
-      reject(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`));
-    });
+    req.on("timeout", () => req.destroy(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`)));
     req.on("error", reject);
   });
 }
 
-async function verifyChecksum(buffer, assetName, releaseUrlBase) {
-  const checksumsUrl = `${releaseUrlBase}/checksums.txt`;
-  console.log("Downloading checksums.txt for verification...");
-  const checksumsBuffer = await downloadFile(checksumsUrl);
-  const checksumsText = checksumsBuffer.toString("utf-8");
-
-  const actualHash = crypto.createHash("sha256").update(buffer).digest("hex");
-
-  const expectedLine = checksumsText
-    .split("\n")
-    .find((line) => line.endsWith("  " + assetName) || line.endsWith(" " + assetName));
-
-  if (!expectedLine) {
-    throw new Error(
-      `Checksum verification failed: no entry for ${assetName} in checksums.txt`
-    );
-  }
-
-  const expectedHash = expectedLine.trim().split(/\s+/)[0];
-
-  if (actualHash !== expectedHash) {
-    throw new Error(
-      `Checksum mismatch for ${assetName}:\n  expected: ${expectedHash}\n  actual:   ${actualHash}`
-    );
-  }
-
-  console.log("SHA-256 checksum verified.");
-}
-
-async function extract(buffer, assetName) {
-  fs.mkdirSync(BIN_DIR, { recursive: true });
-
+// extract unpacks only the binary from the archive, without a shell.
+function extract(archive, assetName, destDir) {
   if (assetName.endsWith(".zip")) {
-    // .zip extraction: use PowerShell on Windows, unzip on Unix
-    const tmpZip = path.join(BIN_DIR, "tmp.zip");
-    fs.writeFileSync(tmpZip, buffer);
     if (process.platform === "win32") {
-      execSync(
-        `powershell -NoProfile -Command "Expand-Archive -Force -Path '${tmpZip}' -DestinationPath '${BIN_DIR}'"`,
-        { stdio: "ignore" }
+      execFileSync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Expand-Archive -Force -LiteralPath $env:DMCP_ARCHIVE -DestinationPath $env:DMCP_DEST",
+        ],
+        { stdio: "ignore", env: { ...process.env, DMCP_ARCHIVE: archive, DMCP_DEST: destDir } }
       );
     } else {
-      execSync(`unzip -o "${tmpZip}" "${BIN_NAME}" -d "${BIN_DIR}"`, { stdio: "ignore" });
+      execFileSync("unzip", ["-o", archive, BIN_NAME, "-d", destDir], { stdio: "ignore" });
     }
-    fs.unlinkSync(tmpZip);
   } else {
-    const tmpTar = path.join(BIN_DIR, "tmp.tar.gz");
-    fs.writeFileSync(tmpTar, buffer);
-    execSync(`tar -xzf "${tmpTar}" -C "${BIN_DIR}" "${BIN_NAME}"`, { stdio: "ignore" });
-    fs.unlinkSync(tmpTar);
-  }
-
-  if (process.platform !== "win32") {
-    fs.chmodSync(BIN_PATH, 0o755);
+    execFileSync("tar", ["-xzf", archive, "-C", destDir, BIN_NAME], { stdio: "ignore" });
   }
 }
 
-async function main() {
+async function install() {
   if (fs.existsSync(BIN_PATH)) {
-    console.log("duplicacy-mcp binary already exists, skipping download.");
     return;
   }
-
   const assetName = getAssetName();
-  const releaseUrlBase = `https://github.com/${REPO}/releases/download/v${VERSION}`;
-  const url = `${releaseUrlBase}/${assetName}`;
+  const want = expectedHash(assetName);
+  const url = `https://github.com/${REPO}/releases/download/v${VERSION}/${assetName}`;
 
-  console.log(`Downloading duplicacy-mcp v${VERSION} for ${process.platform}-${process.arch}...`);
-  const buffer = await downloadFile(url);
-
-  await verifyChecksum(buffer, assetName, releaseUrlBase);
-
-  console.log("Extracting binary...");
-  await extract(buffer, assetName);
-
-  console.log(`Installed duplicacy-mcp to ${BIN_PATH}`);
+  fs.mkdirSync(BIN_DIR, { recursive: true });
+  const work = fs.mkdtempSync(path.join(BIN_DIR, ".install-"));
+  try {
+    const archive = path.join(work, assetName);
+    log(`Downloading duplicacy-mcp v${VERSION} for ${process.platform}-${process.arch}...`);
+    const got = await download(url, archive);
+    if (got !== want) {
+      throw new Error(`Checksum mismatch for ${assetName}: expected ${want}, got ${got}`);
+    }
+    log("SHA-256 checksum verified.");
+    extract(archive, assetName, work);
+    const extracted = path.join(work, BIN_NAME);
+    if (process.platform !== "win32") {
+      fs.chmodSync(extracted, 0o755);
+    }
+    fs.renameSync(extracted, BIN_PATH);
+    log(`Installed duplicacy-mcp to ${BIN_PATH}`);
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
 }
 
-main().catch((err) => {
-  console.error(`Failed to install duplicacy-mcp: ${err.message}`);
-  process.exit(1);
-});
+module.exports = { install, download, nextUrl, expectedHash, getAssetName, BIN_PATH };
+
+if (require.main === module) {
+  install().catch((err) => {
+    log(`Failed to install duplicacy-mcp: ${err.message}`);
+    process.exit(1);
+  });
+}

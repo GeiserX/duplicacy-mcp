@@ -2,12 +2,15 @@
 
 <p>
   <a href="https://codecov.io/gh/GeiserX/duplicacy-mcp"><img src="https://codecov.io/gh/GeiserX/duplicacy-mcp/graph/badge.svg" alt="codecov"/></a>
-  <img src="https://img.shields.io/badge/Go-1.25-blue?style=flat-square&logo=go&logoColor=white" alt="Go"/>
+  <img src="https://img.shields.io/badge/Go-1.27-blue?style=flat-square&logo=go&logoColor=white" alt="Go"/>
 </p>
 
 ## Testing
 
-Tested with [Inspector](https://modelcontextprotocol.io/docs/tools/inspector) and it is currently fully working. Before making a PR, make sure this MCP server behaves well via this medium.
+`go test -race ./...` covers the exporter client, every tool, the resources, the HTTP protections
+(token, Origin, body limit) and a protocol smoke test that drives the real stdio transport with both a
+2026-07-28 `server/discover` and a legacy `initialize`. `node --test` covers the npm wrapper's download
+checks. Before making a PR, also try the server in [Inspector](https://modelcontextprotocol.io/docs/tools/inspector).
 
 ## Credits
 

@@ -1,0 +1,12 @@
+.git
+.github
+.beads
+.claude
+.env
+.env.*
+!.env.example
+bin/
+dist/
+node_modules/
+*.out
+checksums.txt

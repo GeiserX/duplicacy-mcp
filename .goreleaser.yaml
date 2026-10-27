@@ -65,6 +65,9 @@ dockers:
       - .goreleaser.yaml
     build_flag_templates:
       - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=COMMIT={{ .ShortCommit }}"
+      - "--build-arg=DATE={{ .Date }}"
   # ------------- arm64 -------------
   - image_templates:
       - "drumsergio/duplicacy-mcp:{{ .Tag }}-arm64"
@@ -84,6 +87,9 @@ dockers:
       - .goreleaser.yaml
     build_flag_templates:
       - "--platform=linux/arm64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=COMMIT={{ .ShortCommit }}"
+      - "--build-arg=DATE={{ .Date }}"
 
 docker_manifests:
   # stitch the per-arch images into a combined tag = multi-arch
@@ -100,8 +106,15 @@ snapshot:
   name_template: "snapshot-{{ .ShortCommit }}"
 
 changelog:
+  sort: asc
   groups:
     - title: "Features"
       regexp: '^feat'
+      order: 0
     - title: "Fixes"
       regexp: '^fix'
+      order: 1
+    # No regexp: everything else (chore, ci, docs, build), so the release
+    # notes are never empty.
+    - title: "Other changes"
+      order: 999

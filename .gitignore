@@ -33,3 +33,6 @@ node_modules/
 .beads/issues.jsonl
 .beads/interactions.jsonl
 .beads/events.jsonl
+
+# Bundled into the npm package by release.yml; never committed
+/checksums.txt
