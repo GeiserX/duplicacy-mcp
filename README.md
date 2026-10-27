@@ -17,19 +17,36 @@
 ## Features
 
 - Reads the metrics of [duplicacy-exporter](https://github.com/GeiserX/duplicacy-exporter) and serves them over MCP.
-- Resources `duplicacy://status`, `duplicacy://progress` and `duplicacy://health` for read-only browsing.
-- Tools `get_backup_status`, `get_backup_history`, `list_snapshots` and `get_prune_status`.
-- One JSON-RPC endpoint (`/mcp`) over HTTP, or stdio through `npx duplicacy-mcp`.
-- Listens on `127.0.0.1:8080` by default. Put a reverse proxy with authentication in front before exposing it.
+- One call answers "are my backups OK?": `get_backup_overview` gives every backup a verdict (ok, running, stale, never, failed) with a reason.
+- Speaks MCP 2026-07-28 (`server/discover`, stateless requests) and every earlier revision down to 2024-11-05 (the `initialize` handshake) from the same binary, over stdio and Streamable HTTP. Clients that still use the old handshake keep working.
+- Read-only by design: every tool and resource only reads the exporter, so there is no read-only flag to set. Every tool carries `readOnlyHint`, a title, an output schema and structured results.
+- HTTP listens on `127.0.0.1:8080` by default. On any other address it refuses to start without a bearer token, rejects cross-origin browser requests and caps request bodies.
 - Ships as Go binaries for several platforms (GoReleaser), a Docker image and an npm wrapper.
 
-## Quick start
+## Tools and resources
+
+| Tool | What it answers |
+|------|-----------------|
+| `get_backup_overview` | Health of every backup in one call: verdict, reason, age of the last success. `max_age_hours` (default 26) sets when a backup is stale. |
+| `list_snapshots` | Every snapshot ID, storage target and machine, for use as filter values. |
+| `get_backup_status` | State and last-run details of one snapshot, per storage target and machine. |
+| `get_backup_history` | The last completed run of one snapshot. The exporter keeps only the last run. |
+| `get_prune_status` | Whether a prune is running and when the last one succeeded, per storage target. |
+| `get_storage_usage` | Storage size and chunks, and revisions per snapshot, from the exporter's storage poller. |
+
+Resources: `duplicacy://status`, `duplicacy://progress` and `duplicacy://health`. Parameters and output fields are on [Usage](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/usage.md).
+
+## Install
+
+The npm package runs the server over stdio; set `DUPLICACY_EXPORTER_URL` to your exporter.
+
+**Claude Code**
 
 ```bash
-docker run -d -p 127.0.0.1:8080:8080 -e DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750 drumsergio/duplicacy-mcp:v0.1.0
+claude mcp add --transport stdio --env DUPLICACY_EXPORTER_URL=http://localhost:9750 duplicacy -- npx -y duplicacy-mcp
 ```
 
-That serves `http://127.0.0.1:8080/mcp`. For a client that starts the server itself over stdio, use the npm package in an `mcpServers` block:
+**Claude Desktop** (`claude_desktop_config.json`) and **Cursor** (`~/.cursor/mcp.json`)
 
 ```json
 {
@@ -43,13 +60,48 @@ That serves `http://127.0.0.1:8080/mcp`. For a client that starts the server its
 }
 ```
 
-Compose, a global npm install and a local build are in [Getting started](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/getting-started.md).
+**VS Code** (`.vscode/mcp.json`)
+
+```json
+{
+  "servers": {
+    "duplicacy": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "duplicacy-mcp"],
+      "env": { "DUPLICACY_EXPORTER_URL": "http://localhost:9750" }
+    }
+  }
+}
+```
+
+**Codex** (`~/.codex/config.toml`)
+
+```toml
+[mcp_servers.duplicacy]
+command = "npx"
+args = ["-y", "duplicacy-mcp"]
+env = { DUPLICACY_EXPORTER_URL = "http://localhost:9750" }
+```
+
+npm 12, pnpm and Bun skip install scripts, so the wrapper downloads and verifies the binary on first start. Versions up to 0.1.2 relied on the install script alone; with npm 12 run them as `npx -y --allow-scripts=duplicacy-mcp duplicacy-mcp`.
+
+**Docker (Streamable HTTP)**
+
+```bash
+export MCP_AUTH_TOKEN=$(openssl rand -hex 32)
+docker run -d -p 127.0.0.1:8080:8080 -e MCP_AUTH_TOKEN \
+  -e DUPLICACY_EXPORTER_URL=http://duplicacy-exporter:9750 drumsergio/duplicacy-mcp:v0.1.2
+claude mcp add --transport http duplicacy http://127.0.0.1:8080/mcp --header "Authorization: Bearer $MCP_AUTH_TOKEN"
+```
+
+The image listens on `0.0.0.0:8080` inside the container, so it will not start without `MCP_AUTH_TOKEN` (or `MCP_ALLOW_UNAUTHENTICATED=true` behind a reverse proxy that authenticates). Compose, a global npm install and a local build are in [Getting started](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/getting-started.md); every variable is in [Configuration](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/configuration.md).
 
 ## Documentation
 
 - [Getting started](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/getting-started.md): Docker Compose, npm, local build, first run
-- [Configuration](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/configuration.md): environment variables, client config for stdio and HTTP
-- [Usage](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/usage.md): resources and tools
+- [Configuration](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/configuration.md): environment variables, HTTP security, client config for stdio and HTTP
+- [Usage](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/usage.md): tools, parameters, output fields and resources
 - [Development](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/development.md): testing with Inspector, credits, contributing
 - [Related projects](https://github.com/GeiserX/duplicacy-mcp/blob/main/docs/related.md): the Duplicacy family, other MCP servers, registry listings
 

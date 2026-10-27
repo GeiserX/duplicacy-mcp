@@ -1,10 +1,22 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.GeiserX/duplicacy-mcp",
-  "description": "MCP server for Duplicacy — monitor backup status and Prometheus metrics",
+  "title": "Duplicacy MCP",
+  "description": "MCP server for Duplicacy: backup health, status and Prometheus metrics from duplicacy-exporter",
+  "websiteUrl": "https://github.com/GeiserX/duplicacy-mcp",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/GeiserX/duplicacy-mcp/main/docs/images/icon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": [
+        "any"
+      ]
+    }
+  ],
   "repository": {
     "url": "https://github.com/GeiserX/duplicacy-mcp",
-    "source": "github"
+    "source": "github",
+    "id": "1198347360"
   },
   "version": "0.1.2",
   "packages": [
@@ -18,8 +30,9 @@
       "environmentVariables": [
         {
           "name": "DUPLICACY_EXPORTER_URL",
-          "description": "Duplicacy Prometheus exporter URL (e.g. http://localhost:9750)",
-          "isRequired": true,
+          "description": "Base URL of duplicacy-exporter, for example http://localhost:9750",
+          "isRequired": false,
+          "default": "http://localhost:9750",
           "format": "string",
           "isSecret": false
         }
@@ -30,13 +43,45 @@
       "identifier": "drumsergio/duplicacy-mcp:v0.1.2",
       "transport": {
         "type": "streamable-http",
-        "url": "http://localhost:8080/mcp"
+        "url": "http://localhost:8080/mcp",
+        "headers": [
+          {
+            "name": "Authorization",
+            "description": "The MCP_AUTH_TOKEN value as a bearer token",
+            "value": "Bearer {token}",
+            "isRequired": true,
+            "isSecret": true,
+            "variables": {
+              "token": {
+                "description": "The same value as MCP_AUTH_TOKEN",
+                "isRequired": true,
+                "isSecret": true,
+                "format": "string"
+              }
+            }
+          }
+        ]
       },
       "environmentVariables": [
         {
           "name": "DUPLICACY_EXPORTER_URL",
-          "description": "Duplicacy Prometheus exporter URL (e.g. http://localhost:9750)",
+          "description": "Base URL of duplicacy-exporter as the container reaches it, for example http://duplicacy-exporter:9750",
+          "isRequired": false,
+          "default": "http://duplicacy-exporter:9750",
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "MCP_AUTH_TOKEN",
+          "description": "Bearer token clients must send; the image refuses to start without one. At least 16 characters, for example from openssl rand -hex 32",
           "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "MCP_ALLOWED_ORIGINS",
+          "description": "Comma-separated browser origins allowed to call the endpoint cross-origin",
+          "isRequired": false,
           "format": "string",
           "isSecret": false
         }
