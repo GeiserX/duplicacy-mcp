@@ -9,7 +9,7 @@ reach; it reads the exporter's `/metrics`. Pick one way to run the server; the s
 ```yaml
 services:
   duplicacy-mcp:
-    image: drumsergio/duplicacy-mcp:v0.1.2
+    image: drumsergio/duplicacy-mcp:v0.2.0
     ports:
       - "127.0.0.1:8080:8080"
     environment:
