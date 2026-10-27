@@ -638,10 +638,10 @@ func (c *Client) GetOverview(ctx context.Context, opts OverviewOptions) (Overvie
 		ov.Summary = "The exporter reports no backups yet."
 	case ov.Counts.Stale+ov.Counts.Never+ov.Counts.Failed == 0:
 		ov.Status = "ok"
-		ov.Summary = fmt.Sprintf("All %d backups are healthy (%d ok, %d running).", ov.Counts.Total, ov.Counts.OK, ov.Counts.Running)
+		ov.Summary = fmt.Sprintf("Healthy: %d of %d backups (%d ok, %d running).", ov.Counts.Total, ov.Counts.Total, ov.Counts.OK, ov.Counts.Running)
 	default:
 		ov.Status = "attention"
-		ov.Summary = fmt.Sprintf("%d of %d backups need attention: %d failed, %d stale, %d never succeeded.",
+		ov.Summary = fmt.Sprintf("Needs attention: %d of %d backups (%d failed, %d stale, %d never succeeded).",
 			ov.Counts.Stale+ov.Counts.Never+ov.Counts.Failed, ov.Counts.Total, ov.Counts.Failed, ov.Counts.Stale, ov.Counts.Never)
 	}
 	if s := metrics["duplicacy_exporter_last_activity_timestamp_seconds"]; len(s) > 0 && s[0].Value > 0 {
