@@ -75,7 +75,7 @@ func TestRegisterStatus_handler_returns_status_json(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL)
-	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(true, true))
+	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(false, false))
 	RegisterStatus(s, c)
 
 	resp := initAndReadResource(s, "duplicacy://status")
@@ -125,7 +125,7 @@ func TestRegisterStatus_handler_returns_error_when_fetch_fails(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL)
-	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(true, true))
+	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(false, false))
 	RegisterStatus(s, c)
 
 	resp := initAndReadResource(s, "duplicacy://status")
@@ -145,7 +145,7 @@ func TestRegisterProgress_handler_returns_progress_json(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL)
-	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(true, true))
+	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(false, false))
 	RegisterProgress(s, c)
 
 	resp := initAndReadResource(s, "duplicacy://progress")
@@ -175,7 +175,7 @@ func TestRegisterProgress_handler_returns_error_when_fetch_fails(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL)
-	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(true, true))
+	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(false, false))
 	RegisterProgress(s, c)
 
 	resp := initAndReadResource(s, "duplicacy://progress")
@@ -195,7 +195,7 @@ func TestRegisterHealth_handler_returns_health_json(t *testing.T) {
 	defer srv.Close()
 
 	c := client.New(srv.URL)
-	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(true, true))
+	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(false, false))
 	RegisterHealth(s, c)
 
 	resp := initAndReadResource(s, "duplicacy://health")
@@ -227,7 +227,7 @@ func TestRegisterHealth_handler_returns_health_json(t *testing.T) {
 func TestRegisterHealth_handler_returns_error_when_all_endpoints_fail(t *testing.T) {
 	// Use a server that's completely unreachable to trigger the error path
 	c := client.New("http://127.0.0.1:1")
-	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(true, true))
+	s := server.NewMCPServer("test", "0.0.0", server.WithResourceCapabilities(false, false))
 	RegisterHealth(s, c)
 
 	resp := initAndReadResource(s, "duplicacy://health")

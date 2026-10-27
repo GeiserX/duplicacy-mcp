@@ -159,8 +159,11 @@ func TestHTTP_oversized_body_is_rejected(t *testing.T) {
 		t.Errorf("declared length: status = %d, want 413", resp.StatusCode)
 	}
 
-	// No Content-Length (chunked): the read is capped and the request fails.
-	resp = post(t, srv.URL, io.MultiReader(bytes.NewReader(big)), modernHeaders)
+	// No Content-Length (chunked): a valid request padded past the limit
+	// would succeed if the read were not capped, so it must come back as an
+	// error.
+	padded := append(bytes.Repeat([]byte(" "), maxRequestBytes), modernToolsList()...)
+	resp = post(t, srv.URL, io.MultiReader(bytes.NewReader(padded)), modernHeaders)
 	if resp.StatusCode == http.StatusOK {
 		if m := decode(t, resp); m["error"] == nil {
 			t.Errorf("chunked oversized body was accepted: %v", m)
