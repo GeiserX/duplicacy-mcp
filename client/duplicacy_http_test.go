@@ -215,7 +215,7 @@ func TestParse_skips_non_finite_values(t *testing.T) {
 }
 
 func TestParse_strips_control_characters_from_labels(t *testing.T) {
-	m := parsePrometheusText("x{snapshot_id=\"ph‮otos\x07\"} 1\n")
+	m := parsePrometheusText("x{snapshot_id=\"ph\u202eotos\x07\"} 1\n")
 	if got := m["x"][0].Labels["snapshot_id"]; got != "photos" {
 		t.Errorf("label = %q, want photos", got)
 	}
