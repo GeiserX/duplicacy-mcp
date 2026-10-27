@@ -167,7 +167,7 @@ type OverviewRow struct {
 	ExitCode      *int   `json:"exit_code" jsonschema:"Exit code of the last run, null when unknown"`
 	LastSuccess   string `json:"last_success,omitempty" jsonschema:"Time of the last successful run, RFC 3339 in UTC"`
 	AgeSeconds    *int64 `json:"age_seconds" jsonschema:"Seconds since the last successful run, null when there was none"`
-	Age           string `json:"age,omitempty" jsonschema:"The same age, human readable, for example 3h12m"`
+	Age           string `json:"age,omitempty" jsonschema:"The same age, human readable, for example 3h12m0s"`
 }
 
 // OverviewCounts counts backups per verdict.
