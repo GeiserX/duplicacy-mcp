@@ -18,12 +18,12 @@
     "source": "github",
     "id": "1198347360"
   },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "duplicacy-mcp",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "transport": {
         "type": "stdio"
       },
@@ -40,7 +40,7 @@
     },
     {
       "registryType": "oci",
-      "identifier": "drumsergio/duplicacy-mcp:v0.2.0",
+      "identifier": "drumsergio/duplicacy-mcp:v0.2.1",
       "transport": {
         "type": "streamable-http",
         "url": "http://localhost:8080/mcp",
