@@ -3,8 +3,9 @@
 # Hub, because .goreleaser.yaml passes the source in through extra_files and
 # builds both published images from this file. CI builds linux/arm64 on pull
 # requests, so a bad bump here goes red before merge rather than during a
-# release. go1.27.3 rejects the compromised eMudhra (emSign) intermediates.
-FROM golang:1.27.3@sha256:e519d3b0a5b285e5aa53ab9eef02bc6bbb9cb04608389b743a136a9ce75f0d1e AS builder
+# release. go1.27.3 and later reject the compromised eMudhra (emSign)
+# intermediates; go1.27.4 fixes the net/http crash GO-2026-6859.
+FROM golang:1.27.4@sha256:08bcb99a38f85a265f9a93d1d3323e2440eec333380f3ea26ee0dec9264bb41c AS builder
 ARG VERSION=dev
 ARG COMMIT=none
 ARG DATE=unknown
