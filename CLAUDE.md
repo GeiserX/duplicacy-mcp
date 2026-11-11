@@ -4,7 +4,7 @@
 MCP (Model Context Protocol) server for Duplicacy backup monitoring. Reads metrics from duplicacy-exporter and exposes them as MCP resources and tools, enabling LLMs to query backup status, progress, and health.
 
 ## Tech Stack
-- Go 1.27.3 toolchain (go directive 1.26.0)
+- Go 1.27.4 toolchain (go directive 1.26.0)
 - MCP over mark3labs/mcp-go v1: 2026-07-28 and the legacy initialize handshake back to 2024-11-05, from one binary
 - Docker (image: `drumsergio/duplicacy-mcp`)
 - npm package for stdio transport (`npx duplicacy-mcp`)
